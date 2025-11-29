@@ -15,20 +15,39 @@ export const ManageComments = () => {
   }, []);
 
   const fetchComments = async () => {
-    const { data, error } = await supabase
+    const { data: commentsData, error } = await supabase
       .from('comments')
-      .select(`
-        *,
-        profiles:user_id(display_name),
-        posts(title)
-      `)
+      .select('*')
       .order('created_at', { ascending: false });
 
     if (error) {
       toast.error('Failed to fetch comments');
-    } else {
-      setComments(data || []);
+      setLoading(false);
+      return;
     }
+
+    // Fetch profiles and posts separately
+    const userIds = [...new Set(commentsData?.map(c => c.user_id) || [])];
+    const postIds = [...new Set(commentsData?.map(c => c.post_id) || [])];
+
+    const { data: profilesData } = await supabase
+      .from('profiles')
+      .select('id, display_name')
+      .in('id', userIds);
+
+    const { data: postsData } = await supabase
+      .from('posts')
+      .select('id, title')
+      .in('id', postIds);
+
+    // Merge data
+    const commentsWithDetails = commentsData?.map(comment => ({
+      ...comment,
+      profiles: profilesData?.find(p => p.id === comment.user_id),
+      posts: postsData?.find(p => p.id === comment.post_id)
+    }));
+
+    setComments(commentsWithDetails || []);
     setLoading(false);
   };
 
